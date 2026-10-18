@@ -24,6 +24,7 @@ class SessionMirror(
     private val listenerComponent: ComponentName,
     private val onEvent: (MirrorEvent) -> Unit,
     private val playbackObserver: PlaybackObserver = PlaybackObserver {},
+    excludedPackages: Set<String> = emptySet(),
 ) {
     private inner class TrackedSession(val controller: MediaController) {
         val sourceId = ++nextSourceId
@@ -49,6 +50,7 @@ class SessionMirror(
     private var isStarted = false
     private var isStopped = false
     private var nextSourceId = 0L
+    private var excludedPackages = excludedPackages.toSet()
 
     /**
      * Instances are single-use: throws [IllegalStateException] when already started or stopped.
@@ -90,6 +92,12 @@ class SessionMirror(
         }
     }
 
+    fun setExcludedPackages(packages: Set<String>) {
+        if (isStopped || packages == excludedPackages) return
+        excludedPackages = packages.toSet()
+        if (isStarted) reselect()
+    }
+
     private fun onActiveSessionsChanged(controllers: List<MediaController>?) {
         if (isStopped) return
         Log.d(MirrorLog.SERVICE, "[onActiveSessionsChanged]")
@@ -123,8 +131,8 @@ class SessionMirror(
 
     /** Applies [selectActive] to the current state; [justStarted] is the session that has just begun playing. */
     private fun reselect(justStarted: MediaSession.Token? = null) {
-        val candidates = priorityOrder.mapNotNull(tracked::get).map { SessionCandidate(it.token, it.isPlaying) }
-        val target = selectActive(candidates, activeToken, justStarted)
+        val candidates = priorityOrder.mapNotNull(tracked::get).map { SessionCandidate(it.token, it.isPlaying, it.packageName) }
+        val target = selectActive(candidates, activeToken, justStarted, excludedPackages)
         Log.d(MirrorLog.SERVICE, "[reselect] ${target?.let(tracked::get)?.packageName}")
 
         when {

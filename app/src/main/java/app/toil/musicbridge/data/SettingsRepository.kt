@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.toil.musicbridge.scrobbling.ScrobblingSettings
 import app.toil.musicbridge.scrobbling.ThresholdMode
@@ -29,6 +30,7 @@ class SettingsRepository(context: Context) {
     private val tokenCipher = TokenCipher()
 
     val onboardingDone: Flow<Boolean> = dataStore.data.map { it[OnboardingDoneKey] ?: false }
+    val excludedPackages: Flow<Set<String>> = dataStore.data.map { it[ExcludedPackagesKey] ?: emptySet() }
     val scrobbling: Flow<ScrobblingSettings> = dataStore.data.map { values ->
         ScrobblingSettings(
             enabled = values[ScrobblingEnabledKey] ?: false,
@@ -121,8 +123,13 @@ class SettingsRepository(context: Context) {
         dataStore.edit { it[OnboardingDoneKey] = true }
     }
 
+    suspend fun setExcludedPackages(packages: Set<String>) {
+        dataStore.edit { it[ExcludedPackagesKey] = packages.toSet() }
+    }
+
     private companion object {
         val OnboardingDoneKey = booleanPreferencesKey("onboarding_done")
+        val ExcludedPackagesKey = stringSetPreferencesKey("excluded_packages")
         val ScrobblingEnabledKey = booleanPreferencesKey("scrobbling_enabled")
         val TokenKey = stringPreferencesKey("listenbrainz_encrypted_token")
         val UserNameKey = stringPreferencesKey("listenbrainz_user_name")

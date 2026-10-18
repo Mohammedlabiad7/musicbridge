@@ -5,8 +5,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ActiveSessionSelectionTest {
-    private fun playing(key: String) = SessionCandidate(key, isPlaying = true)
-    private fun paused(key: String) = SessionCandidate(key, isPlaying = false)
+    private fun playing(key: String, packageName: String = key) = SessionCandidate(key, isPlaying = true, packageName = packageName)
+    private fun paused(key: String) = SessionCandidate(key, isPlaying = false, packageName = key)
 
     @Test
     fun keepsPlayingCurrentEvenIfAnotherJustStarted() {
@@ -83,5 +83,53 @@ class ActiveSessionSelectionTest {
     fun ignoresJustStartedThatIsNoLongerTracked() {
         val candidates = listOf(playing("b"))
         assertEquals("b", selectActive(candidates, current = null, justStarted = "gone"))
+    }
+
+    @Test
+    fun skipsExcludedPlayerOnStartup() {
+        val candidates = listOf(playing("a"), playing("b"))
+        assertEquals("b", selectActive(candidates, null, null, setOf("a")))
+    }
+
+    @Test
+    fun switchesAwayFromExcludedCurrentPlayer() {
+        val candidates = listOf(playing("a"), playing("b"))
+        assertEquals("b", selectActive(candidates, "a", null, setOf("a")))
+    }
+
+    @Test
+    fun excludedJustStartedCannotTakeOverPausedPlayer() {
+        val candidates = listOf(playing("b"), paused("a"))
+        assertEquals("a", selectActive(candidates, "a", "b", setOf("b")))
+    }
+
+    @Test
+    fun deactivatesWhenCurrentIsExcludedAndOtherPlayersArePaused() {
+        val candidates = listOf(playing("a"), paused("b"))
+        assertNull(selectActive(candidates, "a", null, setOf("a")))
+    }
+
+    @Test
+    fun excludedPausedPlayerIsNotRetained() {
+        assertNull(selectActive(listOf(paused("a")), "a", null, setOf("a")))
+    }
+
+    @Test
+    fun excludesEverySessionOfTheSamePackage() {
+        val candidates = listOf(playing("a1", "a"), playing("a2", "a"), playing("b"))
+        assertEquals("b", selectActive(candidates, "a1", "a2", setOf("a")))
+    }
+
+    @Test
+    fun restoredPlayingPlayerIsEligibleAgain() {
+        val candidates = listOf(playing("a"))
+        assertNull(selectActive(candidates, null, null, setOf("a")))
+        assertEquals("a", selectActive(candidates, null, null, emptySet()))
+    }
+
+    @Test
+    fun exclusionOfAnotherPlayerDoesNotInterruptCurrent() {
+        val candidates = listOf(playing("a"), playing("b"))
+        assertEquals("a", selectActive(candidates, "a", "b", setOf("b")))
     }
 }

@@ -22,12 +22,15 @@ import app.toil.musicbridge.service.mirror.MirrorLog
 import app.toil.musicbridge.service.mirror.SessionMirror
 import app.toil.musicbridge.service.mirror.PlaybackObserver
 import app.toil.musicbridge.scrobbling.ListenTracker
+import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -50,37 +53,44 @@ class MusicBridgeService : Service() {
         // StateFlow is already distinct, so every emission is a real change of the mirrored player.
         scope.launch { MusicBridgeServiceState.activePackage.collect(::updateNotification) }
 
-        try {
-            // Assigned before start() so that onDestroy can release it even when start() fails.
-            val mirror = SessionMirror(
-                context = applicationContext,
-                listenerComponent = ComponentName(applicationContext, MusicBridgeListenerService::class.java),
-                onEvent = MusicBridgeServiceState::publish,
-                playbackObserver = PlaybackObserver(tracker::update),
-            )
-            this.mirror = mirror
-            mirror.start()
-            scope.launch {
-                var wasTracking = false
-                var previousAccount: String? = null
-                app.settings.scrobbling.distinctUntilChangedBy {
-                    listOf(it.canTrack, it.accountId, it.thresholdMode, it.thresholdSeconds, it.splitArtists)
-                }.collect { settings ->
-                    tracker.configure(settings)
-                    if (settings.canTrack && (!wasTracking || settings.accountId != previousAccount)) tracker.update(mirror.currentPlayback())
-                    wasTracking = settings.canTrack
-                    previousAccount = settings.accountId
+        scope.launch {
+            try {
+                // Assigned before start() so that onDestroy can release it even when start() fails.
+                val mirror = SessionMirror(
+                    context = applicationContext,
+                    listenerComponent = ComponentName(applicationContext, MusicBridgeListenerService::class.java),
+                    onEvent = MusicBridgeServiceState::publish,
+                    playbackObserver = PlaybackObserver(tracker::update),
+                    excludedPackages = app.settings.excludedPackages.first(),
+                )
+                this@MusicBridgeService.mirror = mirror
+                mirror.start()
+                launch {
+                    var wasTracking = false
+                    var previousAccount: String? = null
+                    app.settings.scrobbling.distinctUntilChangedBy {
+                        listOf(it.canTrack, it.accountId, it.thresholdMode, it.thresholdSeconds, it.splitArtists)
+                    }.collect { settings ->
+                        tracker.configure(settings)
+                        if (settings.canTrack && (!wasTracking || settings.accountId != previousAccount)) tracker.update(mirror.currentPlayback())
+                        wasTracking = settings.canTrack
+                        previousAccount = settings.accountId
+                    }
                 }
-            }
-            scope.launch {
-                while (isActive) {
-                    delay(1000)
-                    tracker.tick()
+                launch {
+                    while (isActive) {
+                        delay(1000)
+                        tracker.tick()
+                    }
                 }
+                app.settings.excludedPackages.distinctUntilChanged().collect(mirror::setExcludedPackages)
+            } catch (e: SecurityException) {
+                Log.e(MirrorLog.SERVICE, "Notification listener access is not granted", e)
+                stopSelf()
+            } catch (e: IOException) {
+                Log.e(MirrorLog.SERVICE, "Unable to read application exclusions", e)
+                stopSelf()
             }
-        } catch (e: SecurityException) {
-            Log.e(MirrorLog.SERVICE, "Notification listener access is not granted", e)
-            stopSelf()
         }
     }
 

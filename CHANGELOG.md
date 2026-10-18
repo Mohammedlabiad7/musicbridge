@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added searchable app exclusions in Settings. Excluded apps are not mirrored or tracked for new scrobbles; changes apply without restarting the service. Existing queued listens are unchanged
+
 ## 1.0.2
 
 - Fixed tracks played with the screen off not being scrobbled: long gaps without updates are now credited as far as the player's reported position confirms them

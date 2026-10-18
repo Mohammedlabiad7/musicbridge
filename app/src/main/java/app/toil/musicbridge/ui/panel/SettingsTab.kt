@@ -19,6 +19,7 @@ fun SettingsTab(contentPadding: PaddingValues, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         serviceSection()
+        appExclusionsSection()
         notificationPermissionSection(visible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !permissions.notifications)
         vkxPromoSection()
         aboutSection()
